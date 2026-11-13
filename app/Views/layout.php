@@ -3,10 +3,25 @@ declare(strict_types=1);
 
 use App\Core\Config;
 use App\Core\Resources;
+use App\Services\Auth;
 
 $appName = (string) Config::get('app.name', 'Sistema Escolar');
 $currentActive = $active ?? '';
 $navItems = Resources::all();
+$currentAdmin = Auth::user();
+$adminName = (string) ($currentAdmin['nombre'] ?? 'Administrador');
+$adminUser = (string) ($currentAdmin['usuario'] ?? '');
+$initials = '';
+foreach (preg_split('/\s+/', trim($adminName)) ?: [] as $part) {
+    if ($part === '') {
+        continue;
+    }
+    $initials .= mb_strtoupper(mb_substr($part, 0, 1));
+    if (mb_strlen($initials) >= 2) {
+        break;
+    }
+}
+$initials = $initials === '' ? 'A' : $initials;
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -50,6 +65,20 @@ $navItems = Resources::all();
             <a class="nav__link" href="<?= e(url('/api')) ?>" target="_blank" rel="noopener">
                 <span class="nav__icon">🔌</span><span>API JSON</span>
             </a>
+            <a class="nav__link" href="<?= e(url('/api/docs')) ?>" target="_blank" rel="noopener">
+                <span class="nav__icon">📘</span><span>API Docs</span>
+            </a>
+
+            <p class="nav__label">Cuenta</p>
+            <a class="nav__link <?= $currentActive === 'cuenta' ? 'is-active' : '' ?>" href="<?= e(url('/cuenta')) ?>">
+                <span class="nav__icon">👤</span><span>Mi cuenta</span>
+            </a>
+            <form class="nav__logout" method="post" action="<?= e(url('/logout')) ?>">
+                <?= csrf_field() ?>
+                <button class="nav__link nav__link--button" type="submit">
+                    <span class="nav__icon">⏻</span><span>Cerrar sesión</span>
+                </button>
+            </form>
         </nav>
 
         <div class="sidebar__footer">
@@ -65,7 +94,18 @@ $navItems = Resources::all();
                 <h1><?= e($title ?? 'Inicio') ?></h1>
             </div>
             <div class="topbar__actions">
-                <a class="btn btn-ghost btn-sm" href="<?= e(url('/api')) ?>" target="_blank" rel="noopener">API</a>
+                <a class="btn btn-ghost btn-sm topbar__api" href="<?= e(url('/api')) ?>" target="_blank" rel="noopener">API</a>
+                <a class="topbar__user" href="<?= e(url('/cuenta')) ?>" title="Mi cuenta">
+                    <span class="topbar__avatar"><?= e($initials) ?></span>
+                    <span class="topbar__user-text">
+                        <strong><?= e($adminName) ?></strong>
+                        <small><?= e($adminUser) ?></small>
+                    </span>
+                </a>
+                <form method="post" action="<?= e(url('/logout')) ?>" class="topbar__logout">
+                    <?= csrf_field() ?>
+                    <button class="btn btn-secondary btn-sm" type="submit">Salir</button>
+                </form>
             </div>
         </header>
 

@@ -27,6 +27,14 @@ final class View
         require $file;
         $content = ob_get_clean();
 
+        // Las vistas con documento HTML completo (por ejemplo, el login)
+        // se imprimen sin envolverlas en el layout de la aplicación.
+        if (($data['standalone'] ?? false) === true) {
+            echo $content;
+
+            return;
+        }
+
         require APP_PATH . '/Views/layout.php';
     }
 

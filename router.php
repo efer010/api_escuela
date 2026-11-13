@@ -9,7 +9,7 @@ declare(strict_types=1);
 $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
 
 // Nunca exponer código interno, migraciones, scripts de consola ni archivos ocultos.
-if (preg_match('#^/(app|bin|database)(/|$)#', $path) || preg_match('#(^|/)\.#', $path)) {
+if (preg_match('#^/(app|bin|database|docs)(/|$)#', $path) || preg_match('#(^|/)\.#', $path)) {
     http_response_code(403);
     echo 'Acceso denegado';
     return true;

@@ -26,4 +26,16 @@ return [
         'pass'    => getenv('DB_PASS') === false ? '' : getenv('DB_PASS'),
         'charset' => 'utf8mb4',
     ],
+    'auth' => [
+        // Nombre de la cookie que guarda el token del dispositivo.
+        'cookie'           => getenv('AUTH_COOKIE') ?: 'escuela_admin_token',
+        // Duración del token por dispositivo, en días.
+        'token_days'       => (int) (getenv('AUTH_TOKEN_DAYS') ?: 30),
+        // Intentos fallidos permitidos antes de bloquear temporalmente el formulario.
+        'max_attempts'     => (int) (getenv('AUTH_MAX_ATTEMPTS') ?: 5),
+        // Minutos de bloqueo tras superar los intentos fallidos.
+        'lockout_minutes'  => (int) (getenv('AUTH_LOCKOUT_MINUTES') ?: 15),
+        // Longitud mínima de las contraseñas nuevas.
+        'password_min'     => (int) (getenv('AUTH_PASSWORD_MIN') ?: 8),
+    ],
 ];

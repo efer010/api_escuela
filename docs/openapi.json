@@ -1,0 +1,2887 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "API Sistema Escolar",
+    "version": "1.0.0",
+    "description": "API REST del Sistema Escolar construida con PHP vanilla sobre MariaDB/MySQL.\n\n- Todas las peticiones y respuestas usan JSON UTF-8.\n- **Requiere autenticación.** Obtén un token con `POST /api/login` y envíalo como `Authorization: Bearer <token>`.\n- La API **solo** acepta tokens Bearer: la cookie de sesión web no autentica rutas `/api/*`.\n- Cada token pertenece a un dispositivo y puede revocarse individualmente desde `Mi cuenta` o con `POST /api/logout`.\n- Los tokens expiran a los 30 días (configurable) y el servidor solo guarda su hash SHA-256.\n- Los listados están paginados y aceptan búsqueda, filtros y ordenamiento.\n- Las validaciones devuelven HTTP 422 con el detalle por campo.\n- Los clientes que no puedan enviar PUT/PATCH/DELETE pueden usar POST con el campo `_method` (formularios) o la cabecera `X-HTTP-Method-Override`.\n- Un método HTTP no permitido devuelve HTTP 405.\n\nRecursos disponibles: alumnos, profesores, grupos, materias e inscripciones.\n\nLas rutas `/api/login`, `/api/docs` y `/api/openapi.json` son públicas. El resto devuelve HTTP 401 sin un token Bearer válido.",
+    "contact": {
+      "name": "Sistema Escolar"
+    },
+    "license": {
+      "name": "Uso interno"
+    }
+  },
+  "servers": [
+    {
+      "url": "__BASE_URL__",
+      "description": "Servidor actual"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "Autenticación",
+      "description": "Inicio y cierre de sesión de administradores, y datos del token actual."
+    },
+    {
+      "name": "Sistema",
+      "description": "Índice, estadísticas y documentación de la API."
+    },
+    {
+      "name": "Alumnos",
+      "description": "Gestión de estudiantes. Campos únicos: `matricula` y `correo`."
+    },
+    {
+      "name": "Profesores",
+      "description": "Personal docente. Campos únicos: `numero_empleado` y `correo`."
+    },
+    {
+      "name": "Grupos",
+      "description": "Grupos y salones por ciclo escolar. Llave compuesta única: `nombre` + `ciclo_escolar`."
+    },
+    {
+      "name": "Materias",
+      "description": "Catálogo de asignaturas. Campo único: `clave`."
+    },
+    {
+      "name": "Inscripciones",
+      "description": "Relación alumno-materia. Llave compuesta única: `alumno_id` + `materia_id` + `ciclo_escolar`."
+    },
+    {
+      "name": "Boletas",
+      "description": "Consulta de calificaciones por alumno y ciclo escolar."
+    }
+  ],
+  "paths": {
+    "/api/login": {
+      "post": {
+        "tags": ["Autenticación"],
+        "summary": "Iniciar sesión",
+        "description": "Autentica a un administrador y crea un token para este dispositivo. El token se muestra una sola vez: el servidor únicamente almacena su hash SHA-256. Envía el token en la cabecera `Authorization: Bearer <token>`.",
+        "operationId": "apiLogin",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Sesión iniciada. Devuelve el token del dispositivo.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/logout": {
+      "post": {
+        "tags": ["Autenticación"],
+        "summary": "Cerrar sesión",
+        "description": "Revoca el token con el que se autenticó la petición. El token deja de ser válido de inmediato.",
+        "operationId": "apiLogout",
+        "responses": {
+          "200": {
+            "description": "Token revocado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "example": "Sesión cerrada. El token del dispositivo fue revocado."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/me": {
+      "get": {
+        "tags": ["Autenticación"],
+        "summary": "Datos del administrador autenticado",
+        "description": "Devuelve los datos públicos del administrador y la información del token del dispositivo actual.",
+        "operationId": "apiMe",
+        "responses": {
+          "200": {
+            "description": "Administrador y token actuales.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api": {
+      "get": {
+        "tags": ["Sistema"],
+        "summary": "Índice de la API",
+        "description": "Devuelve los recursos disponibles, sus campos y los endpoints CRUD de cada uno.",
+        "operationId": "apiIndex",
+        "responses": {
+          "200": {
+            "description": "Índice de recursos.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "example": "API Sistema Escolar"
+                    },
+                    "version": {
+                      "type": "string",
+                      "example": "1.0.0"
+                    },
+                    "resources": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "object",
+                        "properties": {
+                          "singular": {
+                            "type": "string"
+                          },
+                          "plural": {
+                            "type": "string"
+                          },
+                          "fields": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "endpoints": {
+                            "type": "object",
+                            "additionalProperties": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "extras": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/stats": {
+      "get": {
+        "tags": ["Sistema"],
+        "summary": "Estadísticas generales",
+        "description": "Totales de las tablas principales y promedio general de calificaciones.",
+        "operationId": "apiStats",
+        "responses": {
+          "200": {
+            "description": "Totales del sistema.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "alumnos": {
+                          "type": "integer",
+                          "example": 2
+                        },
+                        "alumnos_activos": {
+                          "type": "integer",
+                          "example": 2
+                        },
+                        "profesores": {
+                          "type": "integer",
+                          "example": 2
+                        },
+                        "grupos": {
+                          "type": "integer",
+                          "example": 1
+                        },
+                        "materias": {
+                          "type": "integer",
+                          "example": 2
+                        },
+                        "inscripciones": {
+                          "type": "integer",
+                          "example": 3
+                        },
+                        "promedio_general": {
+                          "type": "number",
+                          "nullable": true,
+                          "example": 8.42
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/boleta": {
+      "get": {
+        "tags": ["Boletas"],
+        "summary": "Consulta de boleta",
+        "description": "Devuelve las materias y calificaciones del alumno, junto con un resumen. Sin filtros devuelve todas las filas de la vista `vista_boleta`.",
+        "operationId": "apiBoleta",
+        "parameters": [
+          {
+            "name": "matricula",
+            "in": "query",
+            "required": false,
+            "description": "Matrícula exacta del alumno, por ejemplo `A-2025-001`.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ciclo",
+            "in": "query",
+            "required": false,
+            "description": "Ciclo escolar en formato AAAA-AAAA, por ejemplo `2025-2026`.",
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{4}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Filas de la boleta y resumen.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/BoletaRow"
+                      }
+                    },
+                    "resumen": {
+                      "$ref": "#/components/schemas/BoletaResumen"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/alumnos": {
+      "get": {
+        "tags": ["Alumnos"],
+        "summary": "Listar alumnos",
+        "description": "Listado paginado con búsqueda, filtros y ordenamiento.",
+        "operationId": "listAlumnos",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/page"
+          },
+          {
+            "$ref": "#/components/parameters/perPage"
+          },
+          {
+            "$ref": "#/components/parameters/search"
+          },
+          {
+            "name": "grupo_id",
+            "in": "query",
+            "required": false,
+            "description": "Filtra por grupo.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "activo",
+            "in": "query",
+            "required": false,
+            "description": "Filtra por estado activo (1) o inactivo (0).",
+            "schema": {
+              "type": "integer",
+              "enum": [0, 1]
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "description": "Columna de ordenamiento.",
+            "schema": {
+              "type": "string",
+              "enum": ["matricula", "apellido_paterno", "fecha_inscripcion", "activo"]
+            }
+          },
+          {
+            "$ref": "#/components/parameters/dir"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Listado paginado de alumnos.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Alumno"
+                      }
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/PaginationMeta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      },
+      "post": {
+        "tags": ["Alumnos"],
+        "summary": "Crear alumno",
+        "description": "Crea un alumno. `matricula` y `correo` deben ser únicos. Devuelve la cabecera `Location` con la URL del recurso creado.",
+        "operationId": "createAlumno",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AlumnoCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Alumno creado.",
+            "headers": {
+              "Location": {
+                "description": "URL del alumno creado.",
+                "schema": {
+                  "type": "string",
+                  "example": "/api/alumnos/3"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "example": "Alumno creado correctamente."
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Alumno"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/alumnos/{id}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/id"
+        }
+      ],
+      "get": {
+        "tags": ["Alumnos"],
+        "summary": "Obtener alumno",
+        "operationId": "showAlumno",
+        "responses": {
+          "200": {
+            "description": "Alumno encontrado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Alumno"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      },
+      "put": {
+        "tags": ["Alumnos"],
+        "summary": "Actualizar alumno",
+        "description": "Actualización parcial: los campos omitidos conservan su valor actual.",
+        "operationId": "updateAlumno",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AlumnoUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Alumno actualizado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "example": "Alumno actualizado correctamente."
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Alumno"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      },
+      "patch": {
+        "tags": ["Alumnos"],
+        "summary": "Actualizar alumno parcialmente",
+        "description": "Equivalente a PUT en esta implementación: solo cambia los campos enviados.",
+        "operationId": "patchAlumno",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AlumnoUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Alumno actualizado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "example": "Alumno actualizado correctamente."
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Alumno"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["Alumnos"],
+        "summary": "Eliminar alumno",
+        "description": "Elimina el alumno. Sus inscripciones se eliminan en cascada.",
+        "operationId": "deleteAlumno",
+        "responses": {
+          "200": {
+            "description": "Alumno eliminado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/profesores": {
+      "get": {
+        "tags": ["Profesores"],
+        "summary": "Listar profesores",
+        "description": "Listado paginado con búsqueda, filtros y ordenamiento.",
+        "operationId": "listProfesores",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/page"
+          },
+          {
+            "$ref": "#/components/parameters/perPage"
+          },
+          {
+            "$ref": "#/components/parameters/search"
+          },
+          {
+            "name": "activo",
+            "in": "query",
+            "required": false,
+            "description": "Filtra por estado activo (1) o inactivo (0).",
+            "schema": {
+              "type": "integer",
+              "enum": [0, 1]
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "description": "Columna de ordenamiento.",
+            "schema": {
+              "type": "string",
+              "enum": ["numero_empleado", "apellido_paterno", "fecha_contratacion", "activo"]
+            }
+          },
+          {
+            "$ref": "#/components/parameters/dir"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Listado paginado de profesores.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Profesor"
+                      }
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/PaginationMeta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      },
+      "post": {
+        "tags": ["Profesores"],
+        "summary": "Crear profesor",
+        "description": "Crea un profesor. `numero_empleado` y `correo` deben ser únicos.",
+        "operationId": "createProfesor",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfesorCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Profesor creado.",
+            "headers": {
+              "Location": {
+                "description": "URL del profesor creado.",
+                "schema": {
+                  "type": "string",
+                  "example": "/api/profesores/3"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "example": "Profesor creado correctamente."
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Profesor"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/profesores/{id}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/id"
+        }
+      ],
+      "get": {
+        "tags": ["Profesores"],
+        "summary": "Obtener profesor",
+        "operationId": "showProfesor",
+        "responses": {
+          "200": {
+            "description": "Profesor encontrado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Profesor"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      },
+      "put": {
+        "tags": ["Profesores"],
+        "summary": "Actualizar profesor",
+        "description": "Actualización parcial: los campos omitidos conservan su valor actual.",
+        "operationId": "updateProfesor",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfesorUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Profesor actualizado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "example": "Profesor actualizado correctamente."
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Profesor"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      },
+      "patch": {
+        "tags": ["Profesores"],
+        "summary": "Actualizar profesor parcialmente",
+        "description": "Equivalente a PUT en esta implementación: solo cambia los campos enviados.",
+        "operationId": "patchProfesor",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfesorUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Profesor actualizado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "example": "Profesor actualizado correctamente."
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Profesor"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["Profesores"],
+        "summary": "Eliminar profesor",
+        "description": "Elimina el profesor. Los grupos y materias asociados quedan con el campo de profesor en NULL.",
+        "operationId": "deleteProfesor",
+        "responses": {
+          "200": {
+            "description": "Profesor eliminado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/grupos": {
+      "get": {
+        "tags": ["Grupos"],
+        "summary": "Listar grupos",
+        "description": "Listado paginado con búsqueda, filtros y ordenamiento.",
+        "operationId": "listGrupos",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/page"
+          },
+          {
+            "$ref": "#/components/parameters/perPage"
+          },
+          {
+            "$ref": "#/components/parameters/search"
+          },
+          {
+            "name": "turno",
+            "in": "query",
+            "required": false,
+            "description": "Filtra por turno.",
+            "schema": {
+              "type": "string",
+              "enum": ["matutino", "vespertino"]
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "description": "Columna de ordenamiento.",
+            "schema": {
+              "type": "string",
+              "enum": ["nombre", "grado", "turno", "ciclo_escolar"]
+            }
+          },
+          {
+            "$ref": "#/components/parameters/dir"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Listado paginado de grupos.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Grupo"
+                      }
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/PaginationMeta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      },
+      "post": {
+        "tags": ["Grupos"],
+        "summary": "Crear grupo",
+        "description": "Crea un grupo. La combinación `nombre` + `ciclo_escolar` debe ser única.",
+        "operationId": "createGrupo",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GrupoCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Grupo creado.",
+            "headers": {
+              "Location": {
+                "description": "URL del grupo creado.",
+                "schema": {
+                  "type": "string",
+                  "example": "/api/grupos/2"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "example": "Grupo creado correctamente."
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Grupo"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/grupos/{id}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/id"
+        }
+      ],
+      "get": {
+        "tags": ["Grupos"],
+        "summary": "Obtener grupo",
+        "operationId": "showGrupo",
+        "responses": {
+          "200": {
+            "description": "Grupo encontrado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Grupo"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      },
+      "put": {
+        "tags": ["Grupos"],
+        "summary": "Actualizar grupo",
+        "description": "Actualización parcial: los campos omitidos conservan su valor actual.",
+        "operationId": "updateGrupo",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GrupoUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Grupo actualizado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "example": "Grupo actualizado correctamente."
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Grupo"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      },
+      "patch": {
+        "tags": ["Grupos"],
+        "summary": "Actualizar grupo parcialmente",
+        "description": "Equivalente a PUT en esta implementación: solo cambia los campos enviados.",
+        "operationId": "patchGrupo",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GrupoUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Grupo actualizado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "example": "Grupo actualizado correctamente."
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Grupo"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["Grupos"],
+        "summary": "Eliminar grupo",
+        "description": "Elimina el grupo. Los alumnos asociados quedan sin grupo (`grupo_id = NULL`).",
+        "operationId": "deleteGrupo",
+        "responses": {
+          "200": {
+            "description": "Grupo eliminado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/materias": {
+      "get": {
+        "tags": ["Materias"],
+        "summary": "Listar materias",
+        "description": "Listado paginado con búsqueda, filtros y ordenamiento.",
+        "operationId": "listMaterias",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/page"
+          },
+          {
+            "$ref": "#/components/parameters/perPage"
+          },
+          {
+            "$ref": "#/components/parameters/search"
+          },
+          {
+            "name": "profesor_id",
+            "in": "query",
+            "required": false,
+            "description": "Filtra por profesor.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "activa",
+            "in": "query",
+            "required": false,
+            "description": "Filtra por estado activa (1) o inactiva (0).",
+            "schema": {
+              "type": "integer",
+              "enum": [0, 1]
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "description": "Columna de ordenamiento.",
+            "schema": {
+              "type": "string",
+              "enum": ["clave", "nombre", "creditos", "horas_semana", "activa"]
+            }
+          },
+          {
+            "$ref": "#/components/parameters/dir"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Listado paginado de materias.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Materia"
+                      }
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/PaginationMeta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      },
+      "post": {
+        "tags": ["Materias"],
+        "summary": "Crear materia",
+        "description": "Crea una materia. La `clave` debe ser única.",
+        "operationId": "createMateria",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MateriaCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Materia creada.",
+            "headers": {
+              "Location": {
+                "description": "URL de la materia creada.",
+                "schema": {
+                  "type": "string",
+                  "example": "/api/materias/3"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "example": "Materia creada correctamente."
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Materia"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/materias/{id}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/id"
+        }
+      ],
+      "get": {
+        "tags": ["Materias"],
+        "summary": "Obtener materia",
+        "operationId": "showMateria",
+        "responses": {
+          "200": {
+            "description": "Materia encontrada.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Materia"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      },
+      "put": {
+        "tags": ["Materias"],
+        "summary": "Actualizar materia",
+        "description": "Actualización parcial: los campos omitidos conservan su valor actual.",
+        "operationId": "updateMateria",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MateriaUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Materia actualizada.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "example": "Materia actualizada correctamente."
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Materia"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      },
+      "patch": {
+        "tags": ["Materias"],
+        "summary": "Actualizar materia parcialmente",
+        "description": "Equivalente a PUT en esta implementación: solo cambia los campos enviados.",
+        "operationId": "patchMateria",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MateriaUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Materia actualizada.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "example": "Materia actualizada correctamente."
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Materia"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["Materias"],
+        "summary": "Eliminar materia",
+        "description": "Elimina la materia. Sus inscripciones se eliminan en cascada.",
+        "operationId": "deleteMateria",
+        "responses": {
+          "200": {
+            "description": "Materia eliminada.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/inscripciones": {
+      "get": {
+        "tags": ["Inscripciones"],
+        "summary": "Listar inscripciones",
+        "description": "Listado paginado con búsqueda, filtros y ordenamiento.",
+        "operationId": "listInscripciones",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/page"
+          },
+          {
+            "$ref": "#/components/parameters/perPage"
+          },
+          {
+            "$ref": "#/components/parameters/search"
+          },
+          {
+            "name": "estado",
+            "in": "query",
+            "required": false,
+            "description": "Filtra por estado de la inscripción.",
+            "schema": {
+              "type": "string",
+              "enum": ["inscrito", "aprobado", "reprobado", "baja"]
+            }
+          },
+          {
+            "name": "ciclo_escolar",
+            "in": "query",
+            "required": false,
+            "description": "Filtra por ciclo escolar.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "description": "Columna de ordenamiento.",
+            "schema": {
+              "type": "string",
+              "enum": ["id", "ciclo_escolar", "calificacion", "estado", "fecha_inscripcion"]
+            }
+          },
+          {
+            "$ref": "#/components/parameters/dir"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Listado paginado de inscripciones.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Inscripcion"
+                      }
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/PaginationMeta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      },
+      "post": {
+        "tags": ["Inscripciones"],
+        "summary": "Crear inscripción",
+        "description": "Crea una inscripción. La combinación `alumno_id` + `materia_id` + `ciclo_escolar` debe ser única.",
+        "operationId": "createInscripcion",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InscripcionCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Inscripción creada.",
+            "headers": {
+              "Location": {
+                "description": "URL de la inscripción creada.",
+                "schema": {
+                  "type": "string",
+                  "example": "/api/inscripciones/4"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "example": "Inscripción creada correctamente."
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Inscripcion"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/inscripciones/{id}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/id"
+        }
+      ],
+      "get": {
+        "tags": ["Inscripciones"],
+        "summary": "Obtener inscripción",
+        "operationId": "showInscripcion",
+        "responses": {
+          "200": {
+            "description": "Inscripción encontrada.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Inscripcion"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      },
+      "put": {
+        "tags": ["Inscripciones"],
+        "summary": "Actualizar inscripción",
+        "description": "Actualización parcial: los campos omitidos conservan su valor actual.",
+        "operationId": "updateInscripcion",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InscripcionUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Inscripción actualizada.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "example": "Inscripción actualizada correctamente."
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Inscripcion"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      },
+      "patch": {
+        "tags": ["Inscripciones"],
+        "summary": "Actualizar inscripción parcialmente",
+        "description": "Equivalente a PUT en esta implementación: solo cambia los campos enviados.",
+        "operationId": "patchInscripcion",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InscripcionUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Inscripción actualizada.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "example": "Inscripción actualizada correctamente."
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Inscripcion"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["Inscripciones"],
+        "summary": "Eliminar inscripción",
+        "operationId": "deleteInscripcion",
+        "responses": {
+          "200": {
+            "description": "Inscripción eliminada.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "Token hexadecimal de 64 caracteres",
+        "description": "Token devuelto por `POST /api/login`. Envíalo en la cabecera `Authorization: Bearer <token>`. La cookie de sesión web no es válida en la API."
+      }
+    },
+    "parameters": {
+      "id": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "description": "Identificador del registro.",
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "example": 1
+        }
+      },
+      "page": {
+        "name": "page",
+        "in": "query",
+        "required": false,
+        "description": "Número de página (se ajusta al rango válido).",
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1
+        }
+      },
+      "perPage": {
+        "name": "per_page",
+        "in": "query",
+        "required": false,
+        "description": "Registros por página (1 a 100).",
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 25
+        }
+      },
+      "search": {
+        "name": "q",
+        "in": "query",
+        "required": false,
+        "description": "Búsqueda de texto sobre los campos habilitados del recurso.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "dir": {
+        "name": "dir",
+        "in": "query",
+        "required": false,
+        "description": "Dirección del ordenamiento.",
+        "schema": {
+          "type": "string",
+          "enum": ["asc", "desc"],
+          "default": "asc"
+        }
+      }
+    },
+    "responses": {
+      "Unauthorized": {
+        "description": "Falta el token, es inválido, está expirado o fue revocado.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "error": true,
+              "status": 401,
+              "message": "Se requiere un token Bearer válido. Usa POST /api/login para obtener uno."
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "Registro o ruta inexistente.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "error": true,
+              "status": 404,
+              "message": "Registro no encontrado."
+            }
+          }
+        }
+      },
+      "MethodNotAllowed": {
+        "description": "Método HTTP no permitido para la ruta.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "error": true,
+              "status": 405,
+              "message": "El método POST no está permitido para esta ruta. Métodos permitidos: GET, PUT, PATCH, DELETE."
+            }
+          }
+        }
+      },
+      "ValidationFailed": {
+        "description": "Datos inválidos. Devuelve el detalle por campo.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "example": {
+              "error": true,
+              "status": 422,
+              "message": "Los datos enviados no son válidos.",
+              "errors": {
+                "matricula": "Este campo es obligatorio.",
+                "correo": "Debe ser un correo electrónico válido."
+              }
+            }
+          }
+        }
+      },
+      "ServerError": {
+        "description": "Error interno del servidor.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "error": true,
+              "status": 500,
+              "message": "Ocurrió un error inesperado en el servidor."
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "LoginInput": {
+        "type": "object",
+        "required": ["usuario", "password"],
+        "properties": {
+          "usuario": {
+            "type": "string",
+            "description": "Nombre de usuario o correo del administrador.",
+            "example": "admin"
+          },
+          "password": {
+            "type": "string",
+            "format": "password",
+            "description": "Contraseña del administrador.",
+            "example": "MiContraseñaSegura2026!"
+          },
+          "dispositivo": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 120,
+            "description": "Etiqueta opcional del dispositivo, por ejemplo `Laptop oficina` o `Tablet recepción`.",
+            "example": "Laptop oficina"
+          }
+        }
+      },
+      "LoginResult": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "example": "Sesión iniciada correctamente."
+          },
+          "token": {
+            "type": "string",
+            "description": "Token del dispositivo. Solo se muestra en esta respuesta.",
+            "example": "9f2c4d6e8a0b1c3d5e7f9a0b1c3d5e7f9a0b1c3d5e7f9a0b1c3d5e7f9a0b1c3d"
+          },
+          "token_type": {
+            "type": "string",
+            "example": "Bearer"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-12-13 09:37:49"
+          },
+          "admin": {
+            "$ref": "#/components/schemas/Admin"
+          }
+        }
+      },
+      "Admin": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "example": 1
+          },
+          "usuario": {
+            "type": "string",
+            "example": "admin"
+          },
+          "nombre": {
+            "type": "string",
+            "example": "Administrador del sistema"
+          },
+          "correo": {
+            "type": "string",
+            "format": "email",
+            "nullable": true,
+            "example": "admin@escuela.mx"
+          },
+          "activo": {
+            "type": "integer",
+            "enum": [0, 1],
+            "example": 1
+          },
+          "ultimo_acceso": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "example": "2026-11-13 09:37:49"
+          }
+        }
+      },
+      "TokenInfo": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "example": 1
+          },
+          "dispositivo": {
+            "type": "string",
+            "example": "Chrome en Windows"
+          },
+          "ip": {
+            "type": "string",
+            "nullable": true,
+            "example": "127.0.0.1"
+          },
+          "creado_en": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-11-13 09:37:49"
+          },
+          "ultimo_uso": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "example": "2026-11-13 10:02:11"
+          },
+          "expira_en": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-12-13 09:37:49"
+          }
+        }
+      },
+      "MeResult": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "object",
+            "properties": {
+              "admin": {
+                "$ref": "#/components/schemas/Admin"
+              },
+              "token": {
+                "$ref": "#/components/schemas/TokenInfo"
+              }
+            }
+          }
+        }
+      },
+      "PaginationMeta": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "integer",
+            "example": 1
+          },
+          "per_page": {
+            "type": "integer",
+            "example": 25
+          },
+          "total": {
+            "type": "integer",
+            "example": 2
+          },
+          "last_page": {
+            "type": "integer",
+            "example": 1
+          },
+          "from": {
+            "type": "integer",
+            "example": 1
+          },
+          "to": {
+            "type": "integer",
+            "example": 2
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "required": ["error", "status", "message"],
+        "properties": {
+          "error": {
+            "type": "boolean",
+            "example": true
+          },
+          "status": {
+            "type": "integer",
+            "example": 404
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "ValidationError": {
+        "type": "object",
+        "required": ["error", "status", "message", "errors"],
+        "properties": {
+          "error": {
+            "type": "boolean",
+            "example": true
+          },
+          "status": {
+            "type": "integer",
+            "example": 422
+          },
+          "message": {
+            "type": "string",
+            "example": "Los datos enviados no son válidos."
+          },
+          "errors": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "example": {
+              "matricula": "Este campo es obligatorio."
+            }
+          }
+        }
+      },
+      "DeleteResult": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "example": "Alumno eliminado correctamente."
+          },
+          "id": {
+            "type": "integer",
+            "example": 3
+          }
+        }
+      },
+      "BoletaRow": {
+        "type": "object",
+        "properties": {
+          "matricula": {
+            "type": "string",
+            "example": "A-2025-001"
+          },
+          "alumno": {
+            "type": "string",
+            "example": "Pérez Soto, Ana"
+          },
+          "ciclo_escolar": {
+            "type": "string",
+            "example": "2025-2026"
+          },
+          "clave_materia": {
+            "type": "string",
+            "example": "MAT-301"
+          },
+          "materia": {
+            "type": "string",
+            "example": "Matemáticas III"
+          },
+          "calificacion": {
+            "type": "number",
+            "nullable": true,
+            "example": 9.5
+          },
+          "estado": {
+            "type": "string",
+            "enum": ["inscrito", "aprobado", "reprobado", "baja"],
+            "example": "aprobado"
+          }
+        }
+      },
+      "BoletaResumen": {
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "integer",
+            "example": 3
+          },
+          "calificadas": {
+            "type": "integer",
+            "example": 3
+          },
+          "promedio": {
+            "type": "number",
+            "nullable": true,
+            "example": 8.42
+          },
+          "aprobadas": {
+            "type": "integer",
+            "example": 2
+          },
+          "reprobadas": {
+            "type": "integer",
+            "example": 0
+          },
+          "inscritas": {
+            "type": "integer",
+            "example": 1
+          },
+          "bajas": {
+            "type": "integer",
+            "example": 0
+          }
+        }
+      },
+      "Alumno": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "readOnly": true,
+            "example": 1
+          },
+          "matricula": {
+            "type": "string",
+            "maxLength": 20,
+            "example": "A-2025-001"
+          },
+          "nombre": {
+            "type": "string",
+            "maxLength": 80,
+            "example": "Ana"
+          },
+          "apellido_paterno": {
+            "type": "string",
+            "maxLength": 80,
+            "example": "Pérez"
+          },
+          "apellido_materno": {
+            "type": "string",
+            "maxLength": 80,
+            "nullable": true,
+            "example": "Soto"
+          },
+          "fecha_nacimiento": {
+            "type": "string",
+            "format": "date",
+            "example": "2010-03-21"
+          },
+          "sexo": {
+            "type": "string",
+            "nullable": true,
+            "enum": ["F", "M", "X"],
+            "example": "F"
+          },
+          "correo": {
+            "type": "string",
+            "format": "email",
+            "maxLength": 120,
+            "nullable": true,
+            "example": "ana.perez@alumno.escuela.mx"
+          },
+          "telefono": {
+            "type": "string",
+            "maxLength": 20,
+            "nullable": true,
+            "example": "5551234567"
+          },
+          "direccion": {
+            "type": "string",
+            "maxLength": 200,
+            "nullable": true
+          },
+          "grupo_id": {
+            "type": "integer",
+            "nullable": true,
+            "example": 1
+          },
+          "fecha_inscripcion": {
+            "type": "string",
+            "format": "date",
+            "example": "2025-08-20"
+          },
+          "activo": {
+            "type": "integer",
+            "enum": [0, 1],
+            "example": 1
+          },
+          "creado_en": {
+            "type": "string",
+            "format": "date-time",
+            "readOnly": true
+          },
+          "actualizado_en": {
+            "type": "string",
+            "format": "date-time",
+            "readOnly": true
+          }
+        }
+      },
+      "AlumnoWrite": {
+        "type": "object",
+        "properties": {
+          "matricula": {
+            "type": "string",
+            "maxLength": 20,
+            "description": "Matrícula única del alumno.",
+            "example": "A-2025-001"
+          },
+          "nombre": {
+            "type": "string",
+            "maxLength": 80,
+            "example": "Ana"
+          },
+          "apellido_paterno": {
+            "type": "string",
+            "maxLength": 80,
+            "example": "Pérez"
+          },
+          "apellido_materno": {
+            "type": "string",
+            "maxLength": 80,
+            "nullable": true,
+            "example": "Soto"
+          },
+          "fecha_nacimiento": {
+            "type": "string",
+            "format": "date",
+            "example": "2010-03-21"
+          },
+          "sexo": {
+            "type": "string",
+            "nullable": true,
+            "enum": ["F", "M", "X"],
+            "example": "F"
+          },
+          "correo": {
+            "type": "string",
+            "format": "email",
+            "maxLength": 120,
+            "nullable": true,
+            "description": "Correo único del alumno.",
+            "example": "ana.perez@alumno.escuela.mx"
+          },
+          "telefono": {
+            "type": "string",
+            "maxLength": 20,
+            "nullable": true,
+            "example": "5551234567"
+          },
+          "direccion": {
+            "type": "string",
+            "maxLength": 200,
+            "nullable": true
+          },
+          "grupo_id": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Debe existir en `grupos`.",
+            "example": 1
+          },
+          "fecha_inscripcion": {
+            "type": "string",
+            "format": "date",
+            "description": "Por defecto se usa la fecha actual.",
+            "example": "2025-08-20"
+          },
+          "activo": {
+            "type": "integer",
+            "enum": [0, 1],
+            "default": 1,
+            "example": 1
+          }
+        }
+      },
+      "AlumnoCreate": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/AlumnoWrite"
+          }
+        ],
+        "required": ["matricula", "nombre", "apellido_paterno", "fecha_nacimiento"]
+      },
+      "AlumnoUpdate": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/AlumnoWrite"
+          }
+        ],
+        "description": "Actualización parcial: envía solo los campos a modificar."
+      },
+      "Profesor": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "readOnly": true,
+            "example": 1
+          },
+          "numero_empleado": {
+            "type": "string",
+            "maxLength": 20,
+            "example": "EMP-001"
+          },
+          "nombre": {
+            "type": "string",
+            "maxLength": 80,
+            "example": "Laura"
+          },
+          "apellido_paterno": {
+            "type": "string",
+            "maxLength": 80,
+            "example": "García"
+          },
+          "apellido_materno": {
+            "type": "string",
+            "maxLength": 80,
+            "nullable": true,
+            "example": "Ruiz"
+          },
+          "correo": {
+            "type": "string",
+            "format": "email",
+            "maxLength": 120,
+            "example": "laura.garcia@escuela.mx"
+          },
+          "telefono": {
+            "type": "string",
+            "maxLength": 20,
+            "nullable": true
+          },
+          "especialidad": {
+            "type": "string",
+            "maxLength": 100,
+            "nullable": true,
+            "example": "Matemáticas"
+          },
+          "fecha_contratacion": {
+            "type": "string",
+            "format": "date",
+            "example": "2020-08-15"
+          },
+          "activo": {
+            "type": "integer",
+            "enum": [0, 1],
+            "example": 1
+          },
+          "creado_en": {
+            "type": "string",
+            "format": "date-time",
+            "readOnly": true
+          },
+          "actualizado_en": {
+            "type": "string",
+            "format": "date-time",
+            "readOnly": true
+          }
+        }
+      },
+      "ProfesorWrite": {
+        "type": "object",
+        "properties": {
+          "numero_empleado": {
+            "type": "string",
+            "maxLength": 20,
+            "description": "Número de empleado único.",
+            "example": "EMP-001"
+          },
+          "nombre": {
+            "type": "string",
+            "maxLength": 80,
+            "example": "Laura"
+          },
+          "apellido_paterno": {
+            "type": "string",
+            "maxLength": 80,
+            "example": "García"
+          },
+          "apellido_materno": {
+            "type": "string",
+            "maxLength": 80,
+            "nullable": true,
+            "example": "Ruiz"
+          },
+          "correo": {
+            "type": "string",
+            "format": "email",
+            "maxLength": 120,
+            "description": "Correo único del profesor.",
+            "example": "laura.garcia@escuela.mx"
+          },
+          "telefono": {
+            "type": "string",
+            "maxLength": 20,
+            "nullable": true
+          },
+          "especialidad": {
+            "type": "string",
+            "maxLength": 100,
+            "nullable": true,
+            "example": "Matemáticas"
+          },
+          "fecha_contratacion": {
+            "type": "string",
+            "format": "date",
+            "example": "2020-08-15"
+          },
+          "activo": {
+            "type": "integer",
+            "enum": [0, 1],
+            "default": 1,
+            "example": 1
+          }
+        }
+      },
+      "ProfesorCreate": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ProfesorWrite"
+          }
+        ],
+        "required": ["numero_empleado", "nombre", "apellido_paterno", "correo", "fecha_contratacion"]
+      },
+      "ProfesorUpdate": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ProfesorWrite"
+          }
+        ],
+        "description": "Actualización parcial: envía solo los campos a modificar."
+      },
+      "Grupo": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "readOnly": true,
+            "example": 1
+          },
+          "nombre": {
+            "type": "string",
+            "maxLength": 20,
+            "example": "3-A"
+          },
+          "grado": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 6,
+            "example": 3
+          },
+          "turno": {
+            "type": "string",
+            "enum": ["matutino", "vespertino"],
+            "example": "matutino"
+          },
+          "aula": {
+            "type": "string",
+            "maxLength": 20,
+            "nullable": true,
+            "example": "A-201"
+          },
+          "profesor_tutor_id": {
+            "type": "integer",
+            "nullable": true,
+            "example": 1
+          },
+          "ciclo_escolar": {
+            "type": "string",
+            "maxLength": 9,
+            "pattern": "^\\d{4}-\\d{4}$",
+            "example": "2025-2026"
+          }
+        }
+      },
+      "GrupoWrite": {
+        "type": "object",
+        "properties": {
+          "nombre": {
+            "type": "string",
+            "maxLength": 20,
+            "description": "Nombre del grupo. Único junto con `ciclo_escolar`.",
+            "example": "3-A"
+          },
+          "grado": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 6,
+            "default": 1,
+            "example": 3
+          },
+          "turno": {
+            "type": "string",
+            "enum": ["matutino", "vespertino"],
+            "default": "matutino",
+            "example": "matutino"
+          },
+          "aula": {
+            "type": "string",
+            "maxLength": 20,
+            "nullable": true,
+            "example": "A-201"
+          },
+          "profesor_tutor_id": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Debe existir en `profesores`.",
+            "example": 1
+          },
+          "ciclo_escolar": {
+            "type": "string",
+            "maxLength": 9,
+            "pattern": "^\\d{4}-\\d{4}$",
+            "description": "Formato AAAA-AAAA.",
+            "example": "2025-2026"
+          }
+        }
+      },
+      "GrupoCreate": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/GrupoWrite"
+          }
+        ],
+        "required": ["nombre", "ciclo_escolar"]
+      },
+      "GrupoUpdate": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/GrupoWrite"
+          }
+        ],
+        "description": "Actualización parcial: envía solo los campos a modificar."
+      },
+      "Materia": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "readOnly": true,
+            "example": 1
+          },
+          "clave": {
+            "type": "string",
+            "maxLength": 20,
+            "example": "MAT-301"
+          },
+          "nombre": {
+            "type": "string",
+            "maxLength": 100,
+            "example": "Matemáticas III"
+          },
+          "descripcion": {
+            "type": "string",
+            "maxLength": 255,
+            "nullable": true,
+            "example": "Álgebra y geometría analítica"
+          },
+          "creditos": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255,
+            "example": 8
+          },
+          "horas_semana": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255,
+            "example": 5
+          },
+          "profesor_id": {
+            "type": "integer",
+            "nullable": true,
+            "example": 1
+          },
+          "activa": {
+            "type": "integer",
+            "enum": [0, 1],
+            "example": 1
+          }
+        }
+      },
+      "MateriaWrite": {
+        "type": "object",
+        "properties": {
+          "clave": {
+            "type": "string",
+            "maxLength": 20,
+            "description": "Clave única de la materia.",
+            "example": "MAT-301"
+          },
+          "nombre": {
+            "type": "string",
+            "maxLength": 100,
+            "example": "Matemáticas III"
+          },
+          "descripcion": {
+            "type": "string",
+            "maxLength": 255,
+            "nullable": true,
+            "example": "Álgebra y geometría analítica"
+          },
+          "creditos": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255,
+            "default": 0,
+            "example": 8
+          },
+          "horas_semana": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255,
+            "default": 0,
+            "example": 5
+          },
+          "profesor_id": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Debe existir en `profesores`.",
+            "example": 1
+          },
+          "activa": {
+            "type": "integer",
+            "enum": [0, 1],
+            "default": 1,
+            "example": 1
+          }
+        }
+      },
+      "MateriaCreate": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/MateriaWrite"
+          }
+        ],
+        "required": ["clave", "nombre"]
+      },
+      "MateriaUpdate": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/MateriaWrite"
+          }
+        ],
+        "description": "Actualización parcial: envía solo los campos a modificar."
+      },
+      "Inscripcion": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "readOnly": true,
+            "example": 1
+          },
+          "alumno_id": {
+            "type": "integer",
+            "example": 1
+          },
+          "materia_id": {
+            "type": "integer",
+            "example": 1
+          },
+          "ciclo_escolar": {
+            "type": "string",
+            "maxLength": 9,
+            "pattern": "^\\d{4}-\\d{4}$",
+            "example": "2025-2026"
+          },
+          "calificacion": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 10,
+            "multipleOf": 0.01,
+            "nullable": true,
+            "example": 9.5
+          },
+          "fecha_inscripcion": {
+            "type": "string",
+            "format": "date",
+            "example": "2025-08-20"
+          },
+          "estado": {
+            "type": "string",
+            "enum": ["inscrito", "aprobado", "reprobado", "baja"],
+            "example": "aprobado"
+          }
+        }
+      },
+      "InscripcionWrite": {
+        "type": "object",
+        "properties": {
+          "alumno_id": {
+            "type": "integer",
+            "description": "Debe existir en `alumnos`.",
+            "example": 1
+          },
+          "materia_id": {
+            "type": "integer",
+            "description": "Debe existir en `materias`.",
+            "example": 1
+          },
+          "ciclo_escolar": {
+            "type": "string",
+            "maxLength": 9,
+            "pattern": "^\\d{4}-\\d{4}$",
+            "description": "Formato AAAA-AAAA. Único junto con alumno y materia.",
+            "example": "2025-2026"
+          },
+          "calificacion": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 10,
+            "multipleOf": 0.01,
+            "nullable": true,
+            "description": "Puede omitirse si aún no está calificada.",
+            "example": 9.5
+          },
+          "fecha_inscripcion": {
+            "type": "string",
+            "format": "date",
+            "description": "Por defecto se usa la fecha actual.",
+            "example": "2025-08-20"
+          },
+          "estado": {
+            "type": "string",
+            "enum": ["inscrito", "aprobado", "reprobado", "baja"],
+            "default": "inscrito",
+            "example": "inscrito"
+          }
+        }
+      },
+      "InscripcionCreate": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/InscripcionWrite"
+          }
+        ],
+        "required": ["alumno_id", "materia_id", "ciclo_escolar"]
+      },
+      "InscripcionUpdate": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/InscripcionWrite"
+          }
+        ],
+        "description": "Actualización parcial: envía solo los campos a modificar."
+      }
+    }
+  }
+}
